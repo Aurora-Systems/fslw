@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/macbook/work/aurora/swiftlink/**)",
+      "Read(//Users/macbook/work/aurora/swiftlink_server/**)",
+      "Bash(find /Users/macbook/work/aurora/fastlinq_site /Users/macbook/work/aurora/swiftlink_server /Users/macbook/work/aurora/swiftlink_sockets -name \"*.env\" -o -name \".env*\" 2>/dev/null | grep -v node_modules)",
+      "Bash(cp \"/Users/macbook/Downloads/FastLinQ Website/uploads/pasted-1778675584385-0.png\" /Users/macbook/work/aurora/fastlinq_site/assets/phone-mockup.png && ls /Users/macbook/work/aurora/fastlinq_site/assets/)",
+      "Bash(python3 -c ' *)",
+      "Bash(sed -i '' \"s|✓ Yes#x2713; Yes|&#x2713; Yes|g\" /Users/macbook/work/aurora/fastlinq_site/admin/index.html)",
+      "Bash(sed -i '' \"s|✓ Yes|&#x2713; Yes|g\" /Users/macbook/work/aurora/fastlinq_site/admin/index.html)",
+      "Bash(python3)",
+      "Read(//dev/**)",
+      "Bash(mkdir -p public/assets && cp assets/*.png public/assets/ 2>/dev/null; true && ls public/assets/)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm exec *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(sed -i '' \"s/import type { NextConfig } from 'next';//\" /Users/macbook/work/aurora/fastlinq_site/next.config.mjs)",
+      "Bash(sed -i '' \"s/const nextConfig: NextConfig = /const nextConfig = /\" /Users/macbook/work/aurora/fastlinq_site/next.config.mjs)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/admin)",
+      "Bash(kill %1)"
+    ],
+    "additionalDirectories": [
+      "/Users/macbook/Downloads/FastLinQ Website/uploads",
+      "/Users/macbook/work/aurora/fastlinq_site/assets"
+    ]
+  }
+}
