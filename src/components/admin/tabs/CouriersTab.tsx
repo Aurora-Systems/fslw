@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
 import { useDebounce } from '../hooks/useDebounce';
 
-const BATCH = 25;
+const API = process.env.NEXT_PUBLIC_API_BASE;
+const LIMIT = 25;
 
 interface Courier {
   user_id: string;
@@ -16,6 +16,12 @@ interface Courier {
   country: string;
   didit_session_id: string | null;
   created_at: string;
+  vehicles?: { vehicle_id: string }[];
+}
+
+interface CouriersTabProps {
+  onOpenVerifyDrawer: (userId: string, name: string) => void;
+  token: string;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -23,14 +29,9 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-interface CouriersTabProps {
-  onOpenVerifyDrawer: (userId: string, name: string) => void;
-}
-
-export default function CouriersTab({ onOpenVerifyDrawer }: CouriersTabProps) {
+export default function CouriersTab({ onOpenVerifyDrawer, token }: CouriersTabProps) {
   const [rows, setRows] = useState<Courier[]>([]);
-  const [fleetMap, setFleetMap] = useState<Record<string, number>>({});
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -39,16 +40,14 @@ export default function CouriersTab({ onOpenVerifyDrawer }: CouriersTabProps) {
 
   const debouncedSearch = useDebounce(search, 300);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef(0);
+  const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
 
-  const sb = createClient();
-
   const reset = useCallback(() => {
     setRows([]);
-    setOffset(0);
-    offsetRef.current = 0;
+    setPage(1);
+    pageRef.current = 1;
     setHasMore(true);
     hasMoreRef.current = true;
     setLoading(false);
@@ -58,60 +57,59 @@ export default function CouriersTab({ onOpenVerifyDrawer }: CouriersTabProps) {
   }, []);
 
   const fetchCouriers = useCallback(
-    async (currentOffset: number, currentSearch: string) => {
+    async (currentPage: number, currentSearch: string) => {
       if (loadingRef.current || !hasMoreRef.current) return;
       loadingRef.current = true;
       setLoading(true);
 
-      let q = sb
-        .from('users')
-        .select('user_id,first_name,last_name,email,contact_number,country,didit_session_id,created_at', {
-          count: 'exact',
-        })
-        .eq('acc_type', 'driver')
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + BATCH - 1);
+      try {
+        const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
+        const res = await fetch(`${API}/admin/couriers?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 
-      if (currentSearch) {
-        q = q.or(
-          `first_name.ilike.%${currentSearch}%,last_name.ilike.%${currentSearch}%,email.ilike.%${currentSearch}%,contact_number.ilike.%${currentSearch}%`
-        );
+        const body = await res.json();
+        const newRows: Courier[] = body.data ?? [];
+        const totalCount: number = body.meta?.total ?? 0;
+
+        const filtered = currentSearch
+          ? newRows.filter(c => {
+              const q = currentSearch.toLowerCase();
+              return (
+                (c.first_name || '').toLowerCase().includes(q) ||
+                (c.last_name || '').toLowerCase().includes(q) ||
+                (c.email || '').toLowerCase().includes(q) ||
+                (c.contact_number || '').toLowerCase().includes(q)
+              );
+            })
+          : newRows;
+
+        if (!filtered.length && currentPage === 1) {
+          setEmpty(true);
+          hasMoreRef.current = false;
+          setHasMore(false);
+          return;
+        }
+
+        setRows(prev => (currentPage === 1 ? filtered : [...prev, ...filtered]));
+        setTotal(totalCount);
+
+        pageRef.current = currentPage + 1;
+        setPage(currentPage + 1);
+
+        if (newRows.length < LIMIT) { hasMoreRef.current = false; setHasMore(false); }
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
       }
-
-      const { data, count, error } = await q;
-      loadingRef.current = false;
-      setLoading(false);
-
-      if (error || (!data?.length && currentOffset === 0)) {
-        setEmpty(true);
-        hasMoreRef.current = false;
-        setHasMore(false);
-        return;
-      }
-
-      const newRows = (data || []) as unknown as Courier[];
-      const ids = newRows.map(c => c.user_id);
-      if (ids.length) {
-        const { data: fleet } = await sb.from('fleet').select('user_id').in('user_id', ids);
-        const fm: Record<string, number> = {};
-        (fleet || []).forEach(f => { fm[f.user_id] = (fm[f.user_id] || 0) + 1; });
-        setFleetMap(prev => ({ ...prev, ...fm }));
-      }
-
-      setRows(prev => (currentOffset === 0 ? newRows : [...prev, ...newRows]));
-      const newOffset = currentOffset + newRows.length;
-      offsetRef.current = newOffset;
-      setOffset(newOffset);
-      if (count !== null && count !== undefined) setTotal(count);
-      if (newRows.length < BATCH) { hasMoreRef.current = false; setHasMore(false); }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [token]
   );
 
   useEffect(() => {
     reset();
-    fetchCouriers(0, debouncedSearch);
+    fetchCouriers(1, debouncedSearch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
@@ -121,7 +119,7 @@ export default function CouriersTab({ onOpenVerifyDrawer }: CouriersTabProps) {
     const observer = new IntersectionObserver(
       entries => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          fetchCouriers(offsetRef.current, debouncedSearch);
+          fetchCouriers(pageRef.current, debouncedSearch);
         }
       },
       { rootMargin: '120px' }
@@ -131,7 +129,7 @@ export default function CouriersTab({ onOpenVerifyDrawer }: CouriersTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
-  const countLabel = total != null ? `${offset} / ${total.toLocaleString()}` : `${offset} loaded`;
+  const countLabel = total != null ? `${rows.length} / ${total.toLocaleString()}` : `${rows.length} loaded`;
 
   return (
     <div className="tab-panel active">
@@ -160,7 +158,7 @@ export default function CouriersTab({ onOpenVerifyDrawer }: CouriersTabProps) {
               <th>Contact</th>
               <th>Country</th>
               <th>ID Verification</th>
-              <th>Fleet</th>
+              <th>Vehicles</th>
               <th>Joined</th>
               <th></th>
             </tr>
@@ -189,18 +187,12 @@ export default function CouriersTab({ onOpenVerifyDrawer }: CouriersTabProps) {
                 <td style={{ fontSize: '12px' }}>{c.country || '—'}</td>
                 <td>
                   {c.didit_session_id ? (
-                    <span className="badge badge-review-needed">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ verticalAlign: 'middle', marginRight: '3px' }}>
-                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
-                        <line x1="4" y1="22" x2="4" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                      </svg>
-                      Has session
-                    </span>
+                    <span className="badge badge-review-needed">Has session</span>
                   ) : (
                     <span className="badge" style={{ background: '#f4f4f4', color: 'var(--ink-mute)' }}>None</span>
                   )}
                 </td>
-                <td style={{ fontSize: '12px', fontWeight: 500 }}>{fleetMap[c.user_id] || 0}</td>
+                <td style={{ fontSize: '12px', fontWeight: 500 }}>{c.vehicles?.length ?? 0}</td>
                 <td style={{ color: 'var(--ink-mute)', fontSize: '12px' }}>{fmtDate(c.created_at)}</td>
                 <td>
                   {c.didit_session_id && (

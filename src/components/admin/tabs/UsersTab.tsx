@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
 import { useDebounce } from '../hooks/useDebounce';
 
-const BATCH = 25;
+const API = process.env.NEXT_PUBLIC_API_BASE;
+const LIMIT = 25;
 
 interface User {
   user_id: string;
@@ -19,14 +19,18 @@ interface User {
   created_at: string;
 }
 
+interface UsersTabProps {
+  token: string;
+}
+
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function UsersTab() {
+export default function UsersTab({ token }: UsersTabProps) {
   const [rows, setRows] = useState<User[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -35,16 +39,14 @@ export default function UsersTab() {
 
   const debouncedSearch = useDebounce(search, 300);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef(0);
+  const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
 
-  const sb = createClient();
-
   const reset = useCallback(() => {
     setRows([]);
-    setOffset(0);
-    offsetRef.current = 0;
+    setPage(1);
+    pageRef.current = 1;
     setHasMore(true);
     hasMoreRef.current = true;
     setLoading(false);
@@ -54,51 +56,59 @@ export default function UsersTab() {
   }, []);
 
   const fetchUsers = useCallback(
-    async (currentOffset: number, currentSearch: string) => {
+    async (currentPage: number, currentSearch: string) => {
       if (loadingRef.current || !hasMoreRef.current) return;
       loadingRef.current = true;
       setLoading(true);
 
-      let q = sb
-        .from('users')
-        .select('user_id,first_name,last_name,email,acc_type,contact_number,country,balance,created_at', {
-          count: 'exact',
-        })
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + BATCH - 1);
+      try {
+        const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
+        const res = await fetch(`${API}/admin/users?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 
-      if (currentSearch) {
-        q = q.or(
-          `first_name.ilike.%${currentSearch}%,last_name.ilike.%${currentSearch}%,email.ilike.%${currentSearch}%,contact_number.ilike.%${currentSearch}%`
-        );
+        const body = await res.json();
+        const newRows: User[] = body.data ?? [];
+        const totalCount: number = body.meta?.total ?? 0;
+
+        const filtered = currentSearch
+          ? newRows.filter(u => {
+              const q = currentSearch.toLowerCase();
+              return (
+                (u.first_name || '').toLowerCase().includes(q) ||
+                (u.last_name || '').toLowerCase().includes(q) ||
+                (u.email || '').toLowerCase().includes(q) ||
+                (u.contact_number || '').toLowerCase().includes(q)
+              );
+            })
+          : newRows;
+
+        if (!filtered.length && currentPage === 1) {
+          setEmpty(true);
+          hasMoreRef.current = false;
+          setHasMore(false);
+          return;
+        }
+
+        setRows(prev => (currentPage === 1 ? filtered : [...prev, ...filtered]));
+        setTotal(totalCount);
+
+        pageRef.current = currentPage + 1;
+        setPage(currentPage + 1);
+
+        if (newRows.length < LIMIT) { hasMoreRef.current = false; setHasMore(false); }
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
       }
-
-      const { data, count, error } = await q;
-      loadingRef.current = false;
-      setLoading(false);
-
-      if (error || (!data?.length && currentOffset === 0)) {
-        setEmpty(true);
-        hasMoreRef.current = false;
-        setHasMore(false);
-        return;
-      }
-
-      const newRows = (data || []) as unknown as User[];
-      setRows(prev => (currentOffset === 0 ? newRows : [...prev, ...newRows]));
-      const newOffset = currentOffset + newRows.length;
-      offsetRef.current = newOffset;
-      setOffset(newOffset);
-      if (count !== null && count !== undefined) setTotal(count);
-      if (newRows.length < BATCH) { hasMoreRef.current = false; setHasMore(false); }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [token]
   );
 
   useEffect(() => {
     reset();
-    fetchUsers(0, debouncedSearch);
+    fetchUsers(1, debouncedSearch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
@@ -108,7 +118,7 @@ export default function UsersTab() {
     const observer = new IntersectionObserver(
       entries => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          fetchUsers(offsetRef.current, debouncedSearch);
+          fetchUsers(pageRef.current, debouncedSearch);
         }
       },
       { rootMargin: '120px' }
@@ -118,7 +128,7 @@ export default function UsersTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
-  const countLabel = total != null ? `${offset} / ${total.toLocaleString()}` : `${offset} loaded`;
+  const countLabel = total != null ? `${rows.length} / ${total.toLocaleString()}` : `${rows.length} loaded`;
 
   return (
     <div className="tab-panel active">

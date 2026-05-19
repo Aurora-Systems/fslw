@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
 import { useDebounce } from '../hooks/useDebounce';
 
-const BATCH = 25;
+const API = process.env.NEXT_PUBLIC_API_BASE;
+const LIMIT = 25;
 
 interface Verification {
   user_id: string;
@@ -13,7 +13,14 @@ interface Verification {
   last_name: string;
   contact_number: string;
   didit_session_id: string | null;
+  didit_status: string;
   created_at: string;
+}
+
+interface VerificationsTabProps {
+  onOpenVerifyDrawer: (userId: string, name: string) => void;
+  onVerifyBadge: (count: number) => void;
+  token: string;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -21,14 +28,20 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-interface VerificationsTabProps {
-  onOpenVerifyDrawer: (userId: string, name: string) => void;
-  onVerifyBadge: (count: number) => void;
+function diditBadge(status: string) {
+  const s = (status || 'Unknown').toLowerCase();
+  const map: Record<string, string> = {
+    approved: 'badge-completed',
+    declined: 'badge-cancelled',
+    pending: 'badge-pending',
+    processing: 'badge-active',
+  };
+  return <span className={`badge ${map[s] || 'badge-pending'}`}>{status}</span>;
 }
 
-export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge }: VerificationsTabProps) {
+export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge, token }: VerificationsTabProps) {
   const [rows, setRows] = useState<Verification[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -38,16 +51,14 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge }: 
 
   const debouncedSearch = useDebounce(search, 300);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef(0);
+  const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
 
-  const sb = createClient();
-
   const reset = useCallback(() => {
     setRows([]);
-    setOffset(0);
-    offsetRef.current = 0;
+    setPage(1);
+    pageRef.current = 1;
     setHasMore(true);
     hasMoreRef.current = true;
     setLoading(false);
@@ -57,63 +68,64 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge }: 
   }, []);
 
   const fetchVerifications = useCallback(
-    async (currentOffset: number, currentSearch: string, currentFilter: string) => {
+    async (currentPage: number, currentSearch: string, currentFilter: string) => {
       if (loadingRef.current || !hasMoreRef.current) return;
       loadingRef.current = true;
       setLoading(true);
 
-      let q = sb
-        .from('users')
-        .select('user_id,first_name,last_name,contact_number,didit_session_id,created_at', {
-          count: 'exact',
-        })
-        .eq('acc_type', 'driver')
-        .not('didit_session_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + BATCH - 1);
+      try {
+        const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
+        const res = await fetch(`${API}/admin/verifications?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 
-      if (currentSearch) {
-        q = q.or(
-          `first_name.ilike.%${currentSearch}%,last_name.ilike.%${currentSearch}%,contact_number.ilike.%${currentSearch}%`
-        );
+        const body = await res.json();
+        const newRows: Verification[] = body.data ?? [];
+        const totalCount: number = body.meta?.total ?? 0;
+
+        if (currentPage === 1 && totalCount > 0) onVerifyBadge(totalCount);
+
+        let filtered = newRows;
+        if (currentSearch) {
+          const q = currentSearch.toLowerCase();
+          filtered = filtered.filter(c =>
+            (c.first_name || '').toLowerCase().includes(q) ||
+            (c.last_name || '').toLowerCase().includes(q) ||
+            (c.contact_number || '').toLowerCase().includes(q)
+          );
+        }
+        if (currentFilter) {
+          filtered = filtered.filter(c =>
+            (c.didit_status || '').toLowerCase() === currentFilter.toLowerCase()
+          );
+        }
+
+        if (!filtered.length && currentPage === 1) {
+          setEmpty(true);
+          hasMoreRef.current = false;
+          setHasMore(false);
+          return;
+        }
+
+        setRows(prev => (currentPage === 1 ? filtered : [...prev, ...filtered]));
+        setTotal(totalCount);
+
+        pageRef.current = currentPage + 1;
+        setPage(currentPage + 1);
+
+        if (newRows.length < LIMIT) { hasMoreRef.current = false; setHasMore(false); }
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
       }
-
-      const { data, count, error } = await q;
-      loadingRef.current = false;
-      setLoading(false);
-
-      if (error || (!data?.length && currentOffset === 0)) {
-        setEmpty(true);
-        hasMoreRef.current = false;
-        setHasMore(false);
-        return;
-      }
-
-      // Update verify badge on first fetch
-      if (currentOffset === 0 && count && count > 0) {
-        onVerifyBadge(count);
-      }
-
-      const newRows = ((data || []) as unknown as Verification[]).filter(c => {
-        if (!currentFilter) return true;
-        // Without server-side Didit status, we show all when filtered
-        return true;
-      });
-
-      setRows(prev => (currentOffset === 0 ? newRows : [...prev, ...newRows]));
-      const newOffset = currentOffset + (data?.length || 0);
-      offsetRef.current = newOffset;
-      setOffset(newOffset);
-      if (count !== null && count !== undefined) setTotal(count);
-      if ((data?.length || 0) < BATCH) { hasMoreRef.current = false; setHasMore(false); }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onVerifyBadge]
+    [token, onVerifyBadge]
   );
 
   useEffect(() => {
     reset();
-    fetchVerifications(0, debouncedSearch, filter);
+    fetchVerifications(1, debouncedSearch, filter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, filter]);
 
@@ -123,7 +135,7 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge }: 
     const observer = new IntersectionObserver(
       entries => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          fetchVerifications(offsetRef.current, debouncedSearch, filter);
+          fetchVerifications(pageRef.current, debouncedSearch, filter);
         }
       },
       { rootMargin: '120px' }
@@ -133,7 +145,7 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, filter]);
 
-  const countLabel = total != null ? `${offset} / ${total.toLocaleString()}` : `${offset} loaded`;
+  const countLabel = total != null ? `${rows.length} / ${total.toLocaleString()}` : `${rows.length} loaded`;
 
   return (
     <div className="tab-panel active">
@@ -141,11 +153,7 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge }: 
         <div className="panel-header">
           <div className="panel-title">Identity Verifications</div>
           <div className="panel-count">{countLabel}</div>
-          <select
-            className="filter-select"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-          >
+          <select className="filter-select" value={filter} onChange={e => setFilter(e.target.value)}>
             <option value="">All statuses</option>
             <option value="Approved">Approved</option>
             <option value="Pending">Pending</option>
@@ -199,22 +207,12 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge }: 
                 </td>
                 <td style={{ fontSize: '12px' }}>{c.contact_number || '—'}</td>
                 <td
-                  style={{
-                    fontSize: '11px',
-                    color: 'var(--ink-mute)',
-                    maxWidth: '120px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
+                  style={{ fontSize: '11px', color: 'var(--ink-mute)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   title={c.didit_session_id || ''}
                 >
                   {c.didit_session_id ? c.didit_session_id.slice(0, 18) + '…' : '—'}
                 </td>
-                <td>
-                  <span className="badge badge-Unknown">Unknown</span>
-                  <span className="badge badge-review-needed" style={{ marginLeft: '4px' }}>Review</span>
-                </td>
+                <td>{diditBadge(c.didit_status || 'Unknown')}</td>
                 <td style={{ color: 'var(--ink-mute)', fontSize: '12px' }}>{fmtDate(c.created_at)}</td>
                 <td>
                   <button

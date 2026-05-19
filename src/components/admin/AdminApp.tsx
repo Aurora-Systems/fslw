@@ -110,18 +110,20 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
               key={`overview-${refreshKey}`}
               onViewAllJobs={() => handleTabChange('jobs')}
               onPendingBadge={setPendingBadge}
+              token={currentToken}
             />
           )}
           {activeTab === 'jobs' && initialisedTabs.has('jobs') && (
-            <JobsTab key={`jobs-${refreshKey}`} />
+            <JobsTab key={`jobs-${refreshKey}`} token={currentToken} />
           )}
           {activeTab === 'users' && initialisedTabs.has('users') && (
-            <UsersTab key={`users-${refreshKey}`} />
+            <UsersTab key={`users-${refreshKey}`} token={currentToken} />
           )}
           {activeTab === 'couriers' && initialisedTabs.has('couriers') && (
             <CouriersTab
               key={`couriers-${refreshKey}`}
               onOpenVerifyDrawer={openVerifyDrawer}
+              token={currentToken}
             />
           )}
           {activeTab === 'verifications' && initialisedTabs.has('verifications') && (
@@ -129,16 +131,18 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
               key={`verifications-${refreshKey}`}
               onOpenVerifyDrawer={openVerifyDrawer}
               onVerifyBadge={setVerifyBadge}
+              token={currentToken}
             />
           )}
           {activeTab === 'vehicles' && initialisedTabs.has('vehicles') && (
             <VehiclesTab
               key={`vehicles-${refreshKey}`}
               onOpenVehicleImages={openVehicleImages}
+              token={currentToken}
             />
           )}
           {activeTab === 'transactions' && initialisedTabs.has('transactions') && (
-            <TransactionsTab key={`transactions-${refreshKey}`} />
+            <TransactionsTab key={`transactions-${refreshKey}`} token={currentToken} />
           )}
         </div>
       </div>

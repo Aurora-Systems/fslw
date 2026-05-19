@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase';
 
-const BATCH = 25;
+const API = process.env.NEXT_PUBLIC_API_BASE;
+const LIMIT = 25;
 
 interface Transaction {
   transaction_id: string;
@@ -12,64 +12,69 @@ interface Transaction {
   users: { first_name: string; last_name: string } | null;
 }
 
+interface TransactionsTabProps {
+  token: string;
+}
+
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function TransactionsTab() {
+export default function TransactionsTab({ token }: TransactionsTabProps) {
   const [rows, setRows] = useState<Transaction[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
   const [empty, setEmpty] = useState(false);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef(0);
+  const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
 
-  const sb = createClient();
-
   const fetchTransactions = useCallback(
-    async (currentOffset: number) => {
+    async (currentPage: number) => {
       if (loadingRef.current || !hasMoreRef.current) return;
       loadingRef.current = true;
       setLoading(true);
 
-      const { data, count, error } = await sb
-        .from('transactions')
-        .select('transaction_id,total,created_at,users:user_id(first_name,last_name)', {
-          count: 'exact',
-        })
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + BATCH - 1);
+      try {
+        const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
+        const res = await fetch(`${API}/admin/transactions?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 
-      loadingRef.current = false;
-      setLoading(false);
+        const body = await res.json();
+        const newRows: Transaction[] = body.data ?? [];
+        const totalCount: number = body.meta?.total ?? 0;
 
-      if (error || (!data?.length && currentOffset === 0)) {
-        setEmpty(true);
-        hasMoreRef.current = false;
-        setHasMore(false);
-        return;
+        if (!newRows.length && currentPage === 1) {
+          setEmpty(true);
+          hasMoreRef.current = false;
+          setHasMore(false);
+          return;
+        }
+
+        setRows(prev => (currentPage === 1 ? newRows : [...prev, ...newRows]));
+        setTotal(totalCount);
+
+        pageRef.current = currentPage + 1;
+        setPage(currentPage + 1);
+
+        if (newRows.length < LIMIT) { hasMoreRef.current = false; setHasMore(false); }
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
       }
-
-      const newRows = (data || []) as unknown as Transaction[];
-      setRows(prev => (currentOffset === 0 ? newRows : [...prev, ...newRows]));
-      const newOffset = currentOffset + newRows.length;
-      offsetRef.current = newOffset;
-      setOffset(newOffset);
-      if (count !== null && count !== undefined) setTotal(count);
-      if (newRows.length < BATCH) { hasMoreRef.current = false; setHasMore(false); }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [token]
   );
 
   useEffect(() => {
-    fetchTransactions(0);
+    fetchTransactions(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -79,7 +84,7 @@ export default function TransactionsTab() {
     const observer = new IntersectionObserver(
       entries => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          fetchTransactions(offsetRef.current);
+          fetchTransactions(pageRef.current);
         }
       },
       { rootMargin: '120px' }
@@ -89,7 +94,7 @@ export default function TransactionsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const countLabel = total != null ? `${offset} / ${total.toLocaleString()}` : `${offset} loaded`;
+  const countLabel = total != null ? `${rows.length} / ${total.toLocaleString()}` : `${rows.length} loaded`;
 
   return (
     <div className="tab-panel active">

@@ -39,36 +39,39 @@ CREATE TRIGGER admins_set_updated_at
 -- ─────────────────────────────────────────────────────────────
 ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
 
+-- Helper functions (SECURITY DEFINER = runs as owner, bypasses RLS, no recursion)
+CREATE OR REPLACE FUNCTION public.is_admin(p_user_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.admins
+    WHERE user_id = p_user_id AND is_active = true
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_super_admin(p_user_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.admins
+    WHERE user_id = p_user_id AND role = 'super_admin' AND is_active = true
+  );
+END;
+$$;
+
 -- Active admins can read the full admins list
 CREATE POLICY "Admins can view all admins"
   ON public.admins FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.admins a
-      WHERE a.user_id = auth.uid()
-        AND a.is_active = true
-    )
-  );
+  USING (public.is_admin(auth.uid()));
 
 -- Only super_admins can insert/update/delete admin records
 CREATE POLICY "Super admins can manage admins"
   ON public.admins FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.admins a
-      WHERE a.user_id = auth.uid()
-        AND a.role = 'super_admin'
-        AND a.is_active = true
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.admins a
-      WHERE a.user_id = auth.uid()
-        AND a.role = 'super_admin'
-        AND a.is_active = true
-    )
-  );
+  USING (public.is_super_admin(auth.uid()))
+  WITH CHECK (public.is_super_admin(auth.uid()));
 
 
 -- 3. Helper function — check if a user_id is an active admin

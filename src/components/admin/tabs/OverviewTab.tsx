@@ -2,20 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { Users, Bike, Package, Clock } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
+
+const API = process.env.NEXT_PUBLIC_API_BASE;
 
 interface OverviewTabProps {
   onViewAllJobs: () => void;
   onPendingBadge: (count: number) => void;
-}
-
-interface Stats {
-  userCount: number;
-  courierCount: number;
-  jobCount: number;
-  pendingCount: number;
-  completedCount: number;
-  activeCount: number;
+  token: string;
 }
 
 interface RecentJob {
@@ -51,43 +44,36 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function OverviewTab({ onViewAllJobs, onPendingBadge }: OverviewTabProps) {
-  const [stats, setStats] = useState<Stats | null>(null);
+export default function OverviewTab({ onViewAllJobs, onPendingBadge, token }: OverviewTabProps) {
+  const [stats, setStats] = useState<any>(null);
   const [recentJobs, setRecentJobs] = useState<RecentJob[] | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(true);
 
-  const sb = createClient();
+  const headers = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {
     const loadStats = async () => {
-      const [{ count: uc }, { count: cc }, { data: jobs }] = await Promise.all([
-        sb.from('users').select('id', { count: 'exact', head: true }),
-        sb.from('users').select('id', { count: 'exact', head: true }).eq('acc_type', 'driver'),
-        sb.from('jobs').select('status'),
-      ]);
-      const j = jobs ?? [];
-      const pending = j.filter(x => !x.status || x.status === 'pending').length;
-      setStats({
-        userCount: uc || 0,
-        courierCount: cc || 0,
-        jobCount: j.length,
-        pendingCount: pending,
-        completedCount: j.filter(x => x.status === 'completed').length,
-        activeCount: j.filter(x => x.status === 'active' || x.status === 'in_progress').length,
-      });
-      if (pending > 0) onPendingBadge(pending);
-      setLoadingStats(false);
+      try {
+        const res = await fetch(`${API}/admin/stats`, { headers });
+        if (!res.ok) return;
+        const body = await res.json();
+        setStats(body);
+        if (body.jobs?.pending > 0) onPendingBadge(body.jobs.pending);
+      } finally {
+        setLoadingStats(false);
+      }
     };
 
     const loadRecentJobs = async () => {
-      const { data } = await sb
-        .from('jobs')
-        .select('id,status,delivery_fee,created_at,pickup_location,dropoff_location,users:user_id(first_name,last_name)')
-        .order('created_at', { ascending: false })
-        .limit(8);
-      setRecentJobs((data ?? []) as unknown as RecentJob[]);
-      setLoadingJobs(false);
+      try {
+        const res = await fetch(`${API}/admin/jobs?page=1&limit=8`, { headers });
+        if (!res.ok) return;
+        const body = await res.json();
+        setRecentJobs((body.data ?? []) as RecentJob[]);
+      } finally {
+        setLoadingJobs(false);
+      }
     };
 
     loadStats();
@@ -95,54 +81,49 @@ export default function OverviewTab({ onViewAllJobs, onPendingBadge }: OverviewT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const userCount = stats?.users?.total ?? 0;
+  const courierCount = stats?.users?.couriers ?? 0;
+  const jobCount = stats?.jobs?.total ?? 0;
+  const pendingCount = stats?.jobs?.pending ?? 0;
+  const completedCount = stats?.jobs?.completed ?? 0;
+  const activeCount = stats?.jobs?.active ?? 0;
+
   return (
     <div className="tab-panel active">
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-card-icon">
-            <Users />
-          </div>
+          <div className="stat-card-icon"><Users /></div>
           <div className="stat-card-label">Total Users</div>
           <div className="stat-card-value blue">
-            {loadingStats ? '—' : (stats?.userCount ?? 0).toLocaleString()}
+            {loadingStats ? '—' : userCount.toLocaleString()}
           </div>
           <div className="stat-card-sub">
-            {loadingStats
-              ? 'Loading…'
-              : `${stats?.courierCount ?? 0} couriers · ${(stats?.userCount ?? 0) - (stats?.courierCount ?? 0)} clients`}
+            {loadingStats ? 'Loading…' : `${courierCount} couriers · ${userCount - courierCount} clients`}
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-card-icon">
-            <Bike />
-          </div>
+          <div className="stat-card-icon"><Bike /></div>
           <div className="stat-card-label">Couriers</div>
           <div className="stat-card-value green">
-            {loadingStats ? '—' : (stats?.courierCount ?? 0).toLocaleString()}
+            {loadingStats ? '—' : courierCount.toLocaleString()}
           </div>
           <div className="stat-card-sub">{loadingStats ? 'Loading…' : 'registered drivers'}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-card-icon">
-            <Package />
-          </div>
+          <div className="stat-card-icon"><Package /></div>
           <div className="stat-card-label">Total Jobs</div>
           <div className="stat-card-value blue">
-            {loadingStats ? '—' : (stats?.jobCount ?? 0).toLocaleString()}
+            {loadingStats ? '—' : jobCount.toLocaleString()}
           </div>
           <div className="stat-card-sub">
-            {loadingStats
-              ? 'Loading…'
-              : `${stats?.completedCount ?? 0} completed · ${stats?.activeCount ?? 0} active`}
+            {loadingStats ? 'Loading…' : `${completedCount} completed · ${activeCount} active`}
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-card-icon">
-            <Clock />
-          </div>
+          <div className="stat-card-icon"><Clock /></div>
           <div className="stat-card-label">Pending Jobs</div>
           <div className="stat-card-value orange">
-            {loadingStats ? '—' : (stats?.pendingCount ?? 0).toLocaleString()}
+            {loadingStats ? '—' : pendingCount.toLocaleString()}
           </div>
           <div className="stat-card-sub">{loadingStats ? 'Loading…' : 'awaiting courier'}</div>
         </div>
@@ -172,40 +153,26 @@ export default function OverviewTab({ onViewAllJobs, onPendingBadge }: OverviewT
           <tbody>
             {loadingJobs && (
               <tr className="state-row">
-                <td colSpan={6}>
-                  <span className="spinner"></span>
-                </td>
+                <td colSpan={6}><span className="spinner"></span></td>
               </tr>
             )}
             {!loadingJobs && recentJobs?.length === 0 && (
-              <tr className="state-row">
-                <td colSpan={6}>No jobs yet</td>
-              </tr>
+              <tr className="state-row"><td colSpan={6}>No jobs yet</td></tr>
             )}
-            {!loadingJobs &&
-              recentJobs?.map(j => (
-                <tr key={j.id}>
-                  <td>
-                    <code style={{ fontSize: '11px', color: 'var(--ink-mute)' }}>#{j.id}</code>
-                  </td>
-                  <td>{userName(j.users)}</td>
-                  <td
-                    style={{
-                      fontSize: '12px',
-                      maxWidth: '200px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {j.pickup_location?.formatted_address || '—'} →{' '}
-                    {j.dropoff_location?.formatted_address || '—'}
-                  </td>
-                  <td dangerouslySetInnerHTML={{ __html: statusBadge(j.status) }} />
-                  <td style={{ fontWeight: 600 }}>${(j.delivery_fee || 0).toFixed(2)}</td>
-                  <td style={{ color: 'var(--ink-mute)', fontSize: '12px' }}>{fmtDate(j.created_at)}</td>
-                </tr>
-              ))}
+            {!loadingJobs && recentJobs?.map(j => (
+              <tr key={j.id}>
+                <td>
+                  <code style={{ fontSize: '11px', color: 'var(--ink-mute)' }}>#{j.id}</code>
+                </td>
+                <td>{userName(j.users)}</td>
+                <td style={{ fontSize: '12px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {j.pickup_location?.formatted_address || '—'} → {j.dropoff_location?.formatted_address || '—'}
+                </td>
+                <td dangerouslySetInnerHTML={{ __html: statusBadge(j.status) }} />
+                <td style={{ fontWeight: 600 }}>${(j.delivery_fee || 0).toFixed(2)}</td>
+                <td style={{ color: 'var(--ink-mute)', fontSize: '12px' }}>{fmtDate(j.created_at)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

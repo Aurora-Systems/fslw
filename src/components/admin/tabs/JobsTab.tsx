@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
 import { useDebounce } from '../hooks/useDebounce';
 
-const BATCH = 25;
+const API = process.env.NEXT_PUBLIC_API_BASE;
+const LIMIT = 25;
 
 interface Job {
   id: string;
@@ -16,6 +16,10 @@ interface Job {
   pickup_location: { formatted_address?: string } | null;
   dropoff_location: { formatted_address?: string } | null;
   users: { first_name: string; last_name: string } | null;
+}
+
+interface JobsTabProps {
+  token: string;
 }
 
 function statusBadge(status: string | null | undefined) {
@@ -41,9 +45,9 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function JobsTab() {
+export default function JobsTab({ token }: JobsTabProps) {
   const [rows, setRows] = useState<Job[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -53,16 +57,14 @@ export default function JobsTab() {
 
   const debouncedSearch = useDebounce(search, 300);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef(0);
+  const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
 
-  const sb = createClient();
-
   const reset = useCallback(() => {
     setRows([]);
-    setOffset(0);
-    offsetRef.current = 0;
+    setPage(1);
+    pageRef.current = 1;
     setHasMore(true);
     hasMoreRef.current = true;
     setLoading(false);
@@ -72,75 +74,72 @@ export default function JobsTab() {
   }, []);
 
   const fetchJobs = useCallback(
-    async (currentOffset: number, currentSearch: string, currentFilter: string) => {
+    async (currentPage: number, currentSearch: string, currentFilter: string) => {
       if (loadingRef.current || !hasMoreRef.current) return;
       loadingRef.current = true;
       setLoading(true);
 
-      let q = sb
-        .from('jobs')
-        .select(
-          'id,status,delivery_fee,delivery_code,created_at,pickup_location,dropoff_location,users:user_id(first_name,last_name)',
-          { count: 'exact' }
-        )
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + BATCH - 1);
+      try {
+        const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
+        if (currentFilter) params.set('status', currentFilter);
+        const res = await fetch(`${API}/admin/jobs?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 
-      if (currentFilter) q = q.eq('status', currentFilter);
-      if (currentSearch) {
-        q = q.or(
-          `delivery_code.ilike.%${currentSearch}%,` +
-            `pickup_location->>formatted_address.ilike.%${currentSearch}%,` +
-            `dropoff_location->>formatted_address.ilike.%${currentSearch}%`
-        );
-      }
+        const body = await res.json();
+        const newRows: Job[] = body.data ?? [];
+        const total: number = body.meta?.total ?? 0;
 
-      const { data, count, error } = await q;
-      loadingRef.current = false;
-      setLoading(false);
+        // Client-side search filter (server doesn't support text search on this endpoint)
+        const filtered = currentSearch
+          ? newRows.filter(j => {
+              const q = currentSearch.toLowerCase();
+              return (
+                (j.delivery_code || '').toLowerCase().includes(q) ||
+                (j.pickup_location?.formatted_address || '').toLowerCase().includes(q) ||
+                (j.dropoff_location?.formatted_address || '').toLowerCase().includes(q) ||
+                userName(j.users).toLowerCase().includes(q)
+              );
+            })
+          : newRows;
 
-      if (error) return;
+        if (!filtered.length && currentPage === 1) {
+          setEmpty(true);
+          hasMoreRef.current = false;
+          setHasMore(false);
+          return;
+        }
 
-      if (!data?.length && currentOffset === 0) {
-        setEmpty(true);
-        hasMoreRef.current = false;
-        setHasMore(false);
-        return;
-      }
+        setRows(prev => (currentPage === 1 ? filtered : [...prev, ...filtered]));
+        setTotal(total);
 
-      const newRows = (data || []) as unknown as Job[];
-      setRows(prev => (currentOffset === 0 ? newRows : [...prev, ...newRows]));
-      const newOffset = currentOffset + newRows.length;
-      offsetRef.current = newOffset;
-      setOffset(newOffset);
+        const nextPage = currentPage + 1;
+        pageRef.current = nextPage;
+        setPage(nextPage);
 
-      if (count !== null && count !== undefined) setTotal(count);
-
-      if (newRows.length < BATCH) {
-        hasMoreRef.current = false;
-        setHasMore(false);
+        if (newRows.length < LIMIT) { hasMoreRef.current = false; setHasMore(false); }
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [token]
   );
 
-  // Reset and refetch when search/filter changes
   useEffect(() => {
     reset();
-    fetchJobs(0, debouncedSearch, filter);
+    fetchJobs(1, debouncedSearch, filter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, filter]);
 
-  // IntersectionObserver for infinite scroll
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-
     const observer = new IntersectionObserver(
       entries => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          fetchJobs(offsetRef.current, debouncedSearch, filter);
+          fetchJobs(pageRef.current, debouncedSearch, filter);
         }
       },
       { rootMargin: '120px' }
@@ -150,7 +149,7 @@ export default function JobsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, filter]);
 
-  const countLabel = total != null ? `${offset} / ${total.toLocaleString()}` : `${offset} loaded`;
+  const countLabel = total != null ? `${rows.length} / ${total.toLocaleString()}` : `${rows.length} loaded`;
 
   return (
     <div className="tab-panel active">
@@ -158,11 +157,7 @@ export default function JobsTab() {
         <div className="panel-header">
           <div className="panel-title">Jobs</div>
           <div className="panel-count">{countLabel}</div>
-          <select
-            className="filter-select"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-          >
+          <select className="filter-select" value={filter} onChange={e => setFilter(e.target.value)}>
             <option value="">All statuses</option>
             <option value="pending">Pending</option>
             <option value="active">Active</option>
@@ -170,9 +165,7 @@ export default function JobsTab() {
             <option value="cancelled">Cancelled</option>
           </select>
           <div className="search-wrap">
-            <span className="search-icon">
-              <Search />
-            </span>
+            <span className="search-icon"><Search /></span>
             <input
               className="search-input"
               type="text"
@@ -181,9 +174,7 @@ export default function JobsTab() {
               onChange={e => setSearch(e.target.value)}
             />
             {search && (
-              <button className="search-clear" onClick={() => setSearch('')}>
-                <X />
-              </button>
+              <button className="search-clear" onClick={() => setSearch('')}><X /></button>
             )}
           </div>
         </div>
@@ -201,36 +192,16 @@ export default function JobsTab() {
           </thead>
           <tbody>
             {empty && (
-              <tr className="state-row">
-                <td colSpan={7}>No jobs found</td>
-              </tr>
+              <tr className="state-row"><td colSpan={7}>No jobs found</td></tr>
             )}
             {rows.map(j => (
               <tr key={j.id}>
-                <td>
-                  <code style={{ fontSize: '11px', color: 'var(--ink-mute)' }}>#{j.id}</code>
-                </td>
+                <td><code style={{ fontSize: '11px', color: 'var(--ink-mute)' }}>#{j.id}</code></td>
                 <td>{userName(j.users)}</td>
-                <td
-                  style={{
-                    fontSize: '12px',
-                    maxWidth: '130px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
+                <td style={{ fontSize: '12px', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {j.pickup_location?.formatted_address || '—'}
                 </td>
-                <td
-                  style={{
-                    fontSize: '12px',
-                    maxWidth: '130px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
+                <td style={{ fontSize: '12px', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {j.dropoff_location?.formatted_address || '—'}
                 </td>
                 <td>{statusBadge(j.status)}</td>

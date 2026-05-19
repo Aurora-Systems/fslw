@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Search, X, Camera } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
 import { useDebounce } from '../hooks/useDebounce';
 
-const BATCH = 25;
+const API = process.env.NEXT_PUBLIC_API_BASE;
+const LIMIT = 25;
 
 interface Vehicle {
   id: string;
@@ -17,10 +17,14 @@ interface Vehicle {
   vin: string;
   year: string | number;
   insured: boolean;
-  car_front: string | null;
   user_id: string;
   created_at: string;
   users: { first_name: string; last_name: string } | null;
+}
+
+interface VehiclesTabProps {
+  onOpenVehicleImages: (vehicleId: string, title: string) => void;
+  token: string;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -28,13 +32,9 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-interface VehiclesTabProps {
-  onOpenVehicleImages: (vehicleId: string, title: string) => void;
-}
-
-export default function VehiclesTab({ onOpenVehicleImages }: VehiclesTabProps) {
+export default function VehiclesTab({ onOpenVehicleImages, token }: VehiclesTabProps) {
   const [rows, setRows] = useState<Vehicle[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -43,16 +43,14 @@ export default function VehiclesTab({ onOpenVehicleImages }: VehiclesTabProps) {
 
   const debouncedSearch = useDebounce(search, 300);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef(0);
+  const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
 
-  const sb = createClient();
-
   const reset = useCallback(() => {
     setRows([]);
-    setOffset(0);
-    offsetRef.current = 0;
+    setPage(1);
+    pageRef.current = 1;
     setHasMore(true);
     hasMoreRef.current = true;
     setLoading(false);
@@ -62,52 +60,59 @@ export default function VehiclesTab({ onOpenVehicleImages }: VehiclesTabProps) {
   }, []);
 
   const fetchVehicles = useCallback(
-    async (currentOffset: number, currentSearch: string) => {
+    async (currentPage: number, currentSearch: string) => {
       if (loadingRef.current || !hasMoreRef.current) return;
       loadingRef.current = true;
       setLoading(true);
 
-      let q = sb
-        .from('fleet')
-        .select(
-          'id,vehicle_id,vehicle_brand,vehicle_model,vehicle_color,vrn,vin,year,insured,car_front,user_id,created_at,users:user_id(first_name,last_name)',
-          { count: 'exact' }
-        )
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + BATCH - 1);
+      try {
+        const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
+        const res = await fetch(`${API}/admin/fleet?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 
-      if (currentSearch) {
-        q = q.or(
-          `vehicle_brand.ilike.%${currentSearch}%,vehicle_model.ilike.%${currentSearch}%,vrn.ilike.%${currentSearch}%,vin.ilike.%${currentSearch}%`
-        );
+        const body = await res.json();
+        const newRows: Vehicle[] = body.data ?? [];
+        const totalCount: number = body.meta?.total ?? 0;
+
+        const filtered = currentSearch
+          ? newRows.filter(v => {
+              const q = currentSearch.toLowerCase();
+              return (
+                (v.vehicle_brand || '').toLowerCase().includes(q) ||
+                (v.vehicle_model || '').toLowerCase().includes(q) ||
+                (v.vrn || '').toLowerCase().includes(q) ||
+                (v.vin || '').toLowerCase().includes(q)
+              );
+            })
+          : newRows;
+
+        if (!filtered.length && currentPage === 1) {
+          setEmpty(true);
+          hasMoreRef.current = false;
+          setHasMore(false);
+          return;
+        }
+
+        setRows(prev => (currentPage === 1 ? filtered : [...prev, ...filtered]));
+        setTotal(totalCount);
+
+        pageRef.current = currentPage + 1;
+        setPage(currentPage + 1);
+
+        if (newRows.length < LIMIT) { hasMoreRef.current = false; setHasMore(false); }
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
       }
-
-      const { data, count, error } = await q;
-      loadingRef.current = false;
-      setLoading(false);
-
-      if (error || (!data?.length && currentOffset === 0)) {
-        setEmpty(true);
-        hasMoreRef.current = false;
-        setHasMore(false);
-        return;
-      }
-
-      const newRows = (data || []) as unknown as Vehicle[];
-      setRows(prev => (currentOffset === 0 ? newRows : [...prev, ...newRows]));
-      const newOffset = currentOffset + newRows.length;
-      offsetRef.current = newOffset;
-      setOffset(newOffset);
-      if (count !== null && count !== undefined) setTotal(count);
-      if (newRows.length < BATCH) { hasMoreRef.current = false; setHasMore(false); }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [token]
   );
 
   useEffect(() => {
     reset();
-    fetchVehicles(0, debouncedSearch);
+    fetchVehicles(1, debouncedSearch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
@@ -117,7 +122,7 @@ export default function VehiclesTab({ onOpenVehicleImages }: VehiclesTabProps) {
     const observer = new IntersectionObserver(
       entries => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          fetchVehicles(offsetRef.current, debouncedSearch);
+          fetchVehicles(pageRef.current, debouncedSearch);
         }
       },
       { rootMargin: '120px' }
@@ -127,7 +132,7 @@ export default function VehiclesTab({ onOpenVehicleImages }: VehiclesTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch]);
 
-  const countLabel = total != null ? `${offset} / ${total.toLocaleString()}` : `${offset} loaded`;
+  const countLabel = total != null ? `${rows.length} / ${total.toLocaleString()}` : `${rows.length} loaded`;
 
   return (
     <div className="tab-panel active">
@@ -197,12 +202,7 @@ export default function VehiclesTab({ onOpenVehicleImages }: VehiclesTabProps) {
                 <td>
                   <button
                     className="action-btn"
-                    onClick={() =>
-                      onOpenVehicleImages(
-                        v.vehicle_id,
-                        `${v.vehicle_brand} ${v.vehicle_model} · ${v.vrn}`
-                      )
-                    }
+                    onClick={() => onOpenVehicleImages(v.vehicle_id, `${v.vehicle_brand} ${v.vehicle_model} · ${v.vrn}`)}
                   >
                     <Camera size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
                     Images
