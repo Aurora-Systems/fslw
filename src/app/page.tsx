@@ -1,6 +1,5 @@
 import Nav from '@/components/site/Nav';
 import Hero from '@/components/site/Hero';
-import TrustedBy from '@/components/site/TrustedBy';
 import HowItWorks from '@/components/site/HowItWorks';
 import ForClients from '@/components/site/ForClients';
 import ForCouriers from '@/components/site/ForCouriers';
@@ -15,7 +14,6 @@ export default function Home() {
     <>
       <Nav />
       <Hero />
-      <TrustedBy />
       <HowItWorks />
       <ForClients />
       <ForCouriers />

@@ -31,7 +31,6 @@ export default function ForClients() {
               <div className="check-item"><div className="check-icon">✓</div> Live tracking</div>
               <div className="check-item"><div className="check-icon">✓</div> Verified couriers</div>
               <div className="check-item"><div className="check-icon">✓</div> In-app chat</div>
-              <div className="check-item"><div className="check-icon">✓</div> Card · EcoCash · Cash</div>
               <div className="check-item"><div className="check-icon">✓</div> Proof of delivery</div>
               <div className="check-item"><div className="check-icon">✓</div> 24/7 support</div>
             </div>
