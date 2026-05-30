@@ -46,7 +46,7 @@ export default function Features() {
               <CreditCard />
             </div>
             <h3 style={{ marginBottom: '10px' }}>Multiple payments</h3>
-            <p style={{ fontSize: '13.5px' }}>Card, EcoCash, ZIPIT or cash — whatever works best for you.</p>
+            <p style={{ fontSize: '13.5px' }}>Card, mobile wallet, or cash — whatever works best for you.</p>
           </div>
           <div className="card">
             <div className="feature-icon">

@@ -30,7 +30,7 @@ export default function HowItWorks() {
           <div className="step-card card" style={{ textAlign: 'center' }}>
             <div className="step-num" style={{ margin: '0 auto 20px' }}>04</div>
             <h3 style={{ marginBottom: '10px' }}>Delivered</h3>
-            <p style={{ fontSize: '13.5px' }}>Pay in-app with card, EcoCash, or cash. Rate your courier. Done.</p>
+            <p style={{ fontSize: '13.5px' }}>Pay in-app with card, mobile wallet, or cash. Rate your courier. Done.</p>
           </div>
         </div>
       </div>
