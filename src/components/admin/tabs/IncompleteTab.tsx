@@ -68,7 +68,11 @@ export default function IncompleteTab({ token, onBadge }: IncompleteTabProps) {
         const res = await fetch(`${API}/admin/incomplete-signups?${params}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
+        if (!res.ok) {
+          const errBody = await res.text();
+          console.error('incomplete-signups error', res.status, errBody);
+          setEmpty(true); hasMoreRef.current = false; setHasMore(false); return;
+        }
 
         const body = await res.json();
         const newRows: IncompleteUser[] = body.data ?? [];
