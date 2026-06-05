@@ -7,6 +7,7 @@ import AdminTopbar from './AdminTopbar';
 import OverviewTab from './tabs/OverviewTab';
 import JobsTab from './tabs/JobsTab';
 import UsersTab from './tabs/UsersTab';
+import IncompleteTab from './tabs/IncompleteTab';
 import CouriersTab from './tabs/CouriersTab';
 import VerificationsTab from './tabs/VerificationsTab';
 import VehiclesTab from './tabs/VehiclesTab';
@@ -27,16 +28,17 @@ interface AdminAppProps {
 }
 
 const TAB_TITLES: Record<string, string> = {
-  overview: 'Dashboard',
-  jobs: 'Jobs',
-  users: 'Users',
-  couriers: 'Couriers',
+  overview:    'Dashboard',
+  jobs:        'Jobs',
+  users:       'Users',
+  incomplete:  'Incomplete Signups',
+  couriers:    'Couriers',
   verifications: 'Identity Verifications',
-  vehicles: 'Registered Vehicles',
+  vehicles:    'Registered Vehicles',
   transactions: 'Transactions',
 };
 
-type TabKey = 'overview' | 'jobs' | 'users' | 'couriers' | 'verifications' | 'vehicles' | 'transactions';
+type TabKey = 'overview' | 'jobs' | 'users' | 'incomplete' | 'couriers' | 'verifications' | 'vehicles' | 'transactions';
 
 export default function AdminApp({ session, adminData, onLogout }: AdminAppProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
@@ -44,6 +46,7 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
   const [lastUpdated, setLastUpdated] = useState(`Updated ${new Date().toLocaleTimeString()}`);
   const [pendingBadge, setPendingBadge] = useState(0);
   const [verifyBadge, setVerifyBadge] = useState(0);
+  const [incompleteBadge, setIncompleteBadge] = useState(0);
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -55,7 +58,6 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
   const [modalVehicleId, setModalVehicleId] = useState<string | null>(null);
   const [modalTitle, setModalTitle] = useState('');
 
-  // Refresh key to force tab remount
   const [refreshKey, setRefreshKey] = useState(0);
 
   const adminName = adminData?.name || session.user?.email?.split('@')[0] || 'Admin';
@@ -96,6 +98,7 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
         adminRole={adminRole}
         pendingBadge={pendingBadge}
         verifyBadge={verifyBadge}
+        incompleteBadge={incompleteBadge}
       />
 
       <div className="main">
@@ -118,6 +121,13 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
           )}
           {activeTab === 'users' && initialisedTabs.has('users') && (
             <UsersTab key={`users-${refreshKey}`} token={currentToken} />
+          )}
+          {activeTab === 'incomplete' && initialisedTabs.has('incomplete') && (
+            <IncompleteTab
+              key={`incomplete-${refreshKey}`}
+              token={currentToken}
+              onBadge={setIncompleteBadge}
+            />
           )}
           {activeTab === 'couriers' && initialisedTabs.has('couriers') && (
             <CouriersTab

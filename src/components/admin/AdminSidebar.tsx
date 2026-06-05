@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { BarChart2, Package, Users, Bike, ShieldCheck, Car, CreditCard, LogOut } from 'lucide-react';
+import { BarChart2, Package, Users, UserX, Bike, ShieldCheck, Car, CreditCard, LogOut } from 'lucide-react';
 
 interface AdminSidebarProps {
   activeTab: string;
@@ -11,6 +11,7 @@ interface AdminSidebarProps {
   adminRole: string;
   pendingBadge: number;
   verifyBadge: number;
+  incompleteBadge: number;
 }
 
 export default function AdminSidebar({
@@ -21,6 +22,7 @@ export default function AdminSidebar({
   adminRole,
   pendingBadge,
   verifyBadge,
+  incompleteBadge,
 }: AdminSidebarProps) {
   const avatarLetter = adminName?.[0]?.toUpperCase() || 'A';
 
@@ -70,6 +72,18 @@ export default function AdminSidebar({
             <Users />
           </span>
           Users
+        </button>
+        <button
+          className={`nav-item${activeTab === 'incomplete' ? ' active' : ''}`}
+          onClick={() => onTabChange('incomplete')}
+        >
+          <span className="icon">
+            <UserX />
+          </span>
+          Incomplete
+          {incompleteBadge > 0 && (
+            <span className="nav-badge" style={{ background: '#fef3c7', color: '#92400e' }}>{incompleteBadge}</span>
+          )}
         </button>
         <button
           className={`nav-item${activeTab === 'couriers' ? ' active' : ''}`}
