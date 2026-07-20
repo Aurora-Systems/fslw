@@ -39,6 +39,14 @@ export default function Footer() {
               <a href="/admin">Admin portal</a>
             </nav>
           </div>
+          <div>
+            <div className="footer-col-title">Legal</div>
+            <nav className="footer-links">
+              <a href="/legal/privacy-policy">Privacy Policy</a>
+              <a href="/legal/terms-and-conditions">Terms &amp; Conditions</a>
+              <a href="/user/data">Your data &amp; deletion</a>
+            </nav>
+          </div>
         </div>
         <div className="footer-bottom">
           <div>© 2026 FastLinQ. All rights reserved.</div>
