@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { BarChart2, Package, Users, UserX, Bike, ShieldCheck, Car, CreditCard, LogOut } from 'lucide-react';
+import { BarChart2, Package, Users, UserX, Bike, ShieldCheck, Car, CreditCard, KeyRound, LogOut } from 'lucide-react';
 
 interface AdminSidebarProps {
   activeTab: string;
@@ -128,6 +128,21 @@ export default function AdminSidebar({
           </span>
           Transactions
         </button>
+
+        {adminRole === 'super_admin' && (
+          <>
+            <div className="nav-section-label">Developers</div>
+            <button
+              className={`nav-item${activeTab === 'api-keys' ? ' active' : ''}`}
+              onClick={() => onTabChange('api-keys')}
+            >
+              <span className="icon">
+                <KeyRound />
+              </span>
+              API Keys
+            </button>
+          </>
+        )}
       </nav>
       <div className="sidebar-footer">
         <div className="sidebar-user">

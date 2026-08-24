@@ -12,6 +12,7 @@ import CouriersTab from './tabs/CouriersTab';
 import VerificationsTab from './tabs/VerificationsTab';
 import VehiclesTab from './tabs/VehiclesTab';
 import TransactionsTab from './tabs/TransactionsTab';
+import ApiKeysTab from './tabs/ApiKeysTab';
 import VerificationDrawer from './VerificationDrawer';
 import VehicleModal from './VehicleModal';
 
@@ -36,9 +37,10 @@ const TAB_TITLES: Record<string, string> = {
   verifications: 'Identity Verifications',
   vehicles:    'Registered Vehicles',
   transactions: 'Transactions',
+  'api-keys':  'API Keys',
 };
 
-type TabKey = 'overview' | 'jobs' | 'users' | 'incomplete' | 'couriers' | 'verifications' | 'vehicles' | 'transactions';
+type TabKey = 'overview' | 'jobs' | 'users' | 'incomplete' | 'couriers' | 'verifications' | 'vehicles' | 'transactions' | 'api-keys';
 
 export default function AdminApp({ session, adminData, onLogout }: AdminAppProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
@@ -153,6 +155,9 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
           )}
           {activeTab === 'transactions' && initialisedTabs.has('transactions') && (
             <TransactionsTab key={`transactions-${refreshKey}`} token={currentToken} />
+          )}
+          {activeTab === 'api-keys' && initialisedTabs.has('api-keys') && adminRole === 'super_admin' && (
+            <ApiKeysTab key={`api-keys-${refreshKey}`} token={currentToken} />
           )}
         </div>
       </div>
