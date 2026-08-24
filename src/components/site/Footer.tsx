@@ -40,6 +40,13 @@ export default function Footer() {
             </nav>
           </div>
           <div>
+            <div className="footer-col-title">Developers</div>
+            <nav className="footer-links">
+              <a href="/developers/partners">Partner API</a>
+              <a href="mailto:hello@fastlinq.app?subject=FastLinQ%20API%20integration">Get integrated</a>
+            </nav>
+          </div>
+          <div>
             <div className="footer-col-title">Legal</div>
             <nav className="footer-links">
               <a href="/legal/privacy-policy">Privacy Policy</a>
