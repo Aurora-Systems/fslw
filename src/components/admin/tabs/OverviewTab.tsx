@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Users, Bike, Package, Clock } from 'lucide-react';
 import FleetComposition from '../FleetComposition';
+import JobInsights from '../JobInsights';
 
 const API = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -129,6 +130,8 @@ export default function OverviewTab({ onViewAllJobs, onPendingBadge, token }: Ov
           <div className="stat-card-sub">{loadingStats ? 'Loading…' : 'awaiting courier'}</div>
         </div>
       </div>
+
+      <JobInsights token={token} />
 
       <FleetComposition token={token} />
 

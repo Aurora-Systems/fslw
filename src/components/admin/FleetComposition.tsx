@@ -11,6 +11,14 @@ interface CompositionRow {
   description: string | null;
   count: number;
 }
+interface Verification {
+  approved: number;
+  declined: number;
+  pending: number;
+  not_started: number;
+  unknown: number;
+  total: number;
+}
 interface CompositionResponse {
   data: CompositionRow[];
   totals: {
@@ -19,7 +27,16 @@ interface CompositionResponse {
     checked: number;
     unknown: number;
   };
+  verification?: Verification;
 }
+
+const VERIF_SEGMENTS = [
+  { key: 'approved', label: 'Approved', color: '#22c55e' },
+  { key: 'pending', label: 'In review', color: '#f59e0b' },
+  { key: 'declined', label: 'Declined', color: '#ef4444' },
+  { key: 'not_started', label: 'Not started', color: '#c4c9d4' },
+  { key: 'unknown', label: 'Unknown', color: '#8a94a6' },
+] as const;
 
 const BAR_COLORS = ['#1e90d9', '#22c55e', '#f59e0b', '#8b5cf6', '#ef4444', '#1b6bba', '#0ea5e9', '#14b8a6'];
 
@@ -76,8 +93,43 @@ export default function FleetComposition({ token }: { token: string }) {
           <div style={{ color: 'var(--red)', fontSize: 13 }}>{error}</div>
         )}
 
+        {/* Verification status breakdown across drivers who registered a vehicle */}
+        {!loading && !error && data?.verification && data.verification.total > 0 && (
+          <div style={{ marginBottom: rows.length > 0 ? 22 : 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 9 }}>
+              Verification status · {data.verification.total} with a vehicle
+            </div>
+            <div style={{ display: 'flex', height: 14, borderRadius: 7, overflow: 'hidden', background: 'var(--border, #eee)' }}>
+              {VERIF_SEGMENTS.map((s) => {
+                const v = (data.verification as unknown as Record<string, number>)[s.key] || 0;
+                const w = data.verification!.total > 0 ? (v / data.verification!.total) * 100 : 0;
+                return w > 0 ? <div key={s.key} title={`${s.label}: ${v}`} style={{ width: `${w}%`, background: s.color }} /> : null;
+              })}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 11 }}>
+              {VERIF_SEGMENTS.map((s) => {
+                const v = (data.verification as unknown as Record<string, number>)[s.key] || 0;
+                if (!v) return null;
+                return (
+                  <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />
+                    <span style={{ color: 'var(--ink-mute)' }}>{s.label}</span>
+                    <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{v}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {!loading && !error && rows.length === 0 && (
-          <div style={{ color: 'var(--ink-mute)', fontSize: 13 }}>No verified drivers with a registered vehicle yet.</div>
+          <div style={{ color: 'var(--ink-mute)', fontSize: 13 }}>No approved drivers with a registered vehicle yet.</div>
+        )}
+
+        {!loading && !error && rows.length > 0 && (
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
+            Approved drivers by vehicle type
+          </div>
         )}
 
         {!loading && !error && rows.length > 0 && (
