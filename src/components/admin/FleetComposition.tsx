@@ -9,7 +9,9 @@ interface CompositionRow {
   vehicle_id: string;
   vehicle_type: string;
   description: string | null;
-  count: number;
+  drivers: number;   // all registered drivers of this vehicle type
+  verified: number;  // of those, Didit-approved
+  count?: number;    // legacy alias of `drivers`
 }
 interface Verification {
   approved: number;
@@ -67,18 +69,24 @@ export default function FleetComposition({ token }: { token: string }) {
     return () => { cancelled = true; };
   }, [token]);
 
-  const rows = data?.data ?? [];
+  // Tolerate the older payload shape during a rolling deploy.
+  const rows = (data?.data ?? []).map((r) => ({
+    ...r,
+    drivers: r.drivers ?? r.count ?? 0,
+    verified: r.verified ?? 0,
+  }));
   const verified = data?.totals.verified_drivers ?? 0;
-  const maxCount = rows.reduce((m, r) => Math.max(m, r.count), 0) || 1;
+  const totalDrivers = data?.totals.drivers_with_vehicle ?? 0;
+  const maxCount = rows.reduce((m, r) => Math.max(m, r.drivers), 0) || 1;
 
   return (
     <div className="panel">
       <div className="panel-header">
         <div className="panel-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Car size={16} /> Verified courier fleet composition
+          <Car size={16} /> Driver &amp; vehicle-type composition
         </div>
         <span className="panel-count" style={{ marginLeft: 'auto' }}>
-          {loading ? '' : `${verified.toLocaleString()} verified driver${verified === 1 ? '' : 's'}`}
+          {loading ? '' : `${totalDrivers.toLocaleString()} driver${totalDrivers === 1 ? '' : 's'} · ${verified.toLocaleString()} verified`}
         </span>
       </div>
 
@@ -123,20 +131,21 @@ export default function FleetComposition({ token }: { token: string }) {
         )}
 
         {!loading && !error && rows.length === 0 && (
-          <div style={{ color: 'var(--ink-mute)', fontSize: 13 }}>No approved drivers with a registered vehicle yet.</div>
+          <div style={{ color: 'var(--ink-mute)', fontSize: 13 }}>No drivers have registered a vehicle yet.</div>
         )}
 
         {!loading && !error && rows.length > 0 && (
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
-            Approved drivers by vehicle type
+            Drivers by vehicle type
           </div>
         )}
 
         {!loading && !error && rows.length > 0 && (
           <div style={{ display: 'grid', gap: 14 }}>
             {rows.map((r, i) => {
-              const pct = verified > 0 ? Math.round((r.count / verified) * 100) : 0;
-              const width = Math.max(4, (r.count / maxCount) * 100);
+              const pct = totalDrivers > 0 ? Math.round((r.drivers / totalDrivers) * 100) : 0;
+              const width = Math.max(4, (r.drivers / maxCount) * 100);
+              const verifiedShare = r.drivers > 0 ? (r.verified / r.drivers) * 100 : 0;
               const color = BAR_COLORS[i % BAR_COLORS.length];
               return (
                 <div
@@ -154,21 +163,36 @@ export default function FleetComposition({ token }: { token: string }) {
                     )}
                   </div>
                   <div style={{ height: 22, background: 'var(--border, #eee)', borderRadius: 6, overflow: 'hidden' }}>
+                    {/* Full bar = all drivers of this type; solid inner = verified */}
                     <div
                       style={{
                         height: '100%',
                         width: `${width}%`,
-                        background: color,
+                        background: `${color}52`,
                         borderRadius: 6,
                         transition: 'width .4s ease',
                         minWidth: 4,
+                        position: 'relative',
                       }}
-                      title={`${r.count} verified driver${r.count === 1 ? '' : 's'}`}
-                    />
+                      title={`${r.drivers} driver${r.drivers === 1 ? '' : 's'} · ${r.verified} verified`}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          width: `${verifiedShare}%`,
+                          background: color,
+                          borderRadius: 6,
+                          transition: 'width .4s ease',
+                        }}
+                      />
+                    </div>
                   </div>
                   <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 14, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
-                    {r.count}
-                    <span style={{ color: 'var(--ink-mute)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>{pct}%</span>
+                    {r.drivers}
+                    <span style={{ color: 'var(--ink-mute)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>
+                      {r.verified} verified · {pct}%
+                    </span>
                   </div>
                 </div>
               );
@@ -178,8 +202,9 @@ export default function FleetComposition({ token }: { token: string }) {
 
         {!loading && !error && rows.length > 0 && (
           <div style={{ marginTop: 16, fontSize: 11.5, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
-            Verified = identity-approved drivers who have registered a vehicle. Drivers registered
-            for more than one vehicle type are counted in each, so percentages can exceed 100%.
+            Each bar is all drivers registered for that vehicle type; the solid portion is the
+            identity-verified share. A driver registered for more than one type is counted in each,
+            so percentages can exceed 100%.
             {data && data.totals.unknown > 0 &&
               ` ${data.totals.unknown} verification${data.totals.unknown === 1 ? '' : 's'} could not be checked and are excluded.`}
           </div>
