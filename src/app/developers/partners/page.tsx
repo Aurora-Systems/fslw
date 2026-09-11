@@ -70,6 +70,7 @@ export default function PartnerApiPage() {
                 <li><a href="#overview">Overview</a></li>
                 <li><a href="#auth">Authentication</a></li>
                 <li><a href="#lifecycle">Delivery lifecycle</a></li>
+                <li><a href="#quotes">Quote a delivery</a></li>
                 <li><a href="#create">Create a delivery</a></li>
                 <li><a href="#list">List deliveries</a></li>
                 <li><a href="#get">Get a delivery</a></li>
@@ -78,6 +79,7 @@ export default function PartnerApiPage() {
                 <li><a href="#confirm">Confirm delivery</a></li>
                 <li><a href="#cancel">Cancel a delivery</a></li>
                 <li><a href="#vehicles">Vehicle types</a></li>
+                <li><a href="#webhooks">Webhooks</a></li>
                 <li><a href="#models">Data models</a></li>
                 <li><a href="#errors">Errors</a></li>
                 <li><a href="#practices">Best practices</a></li>
@@ -133,7 +135,7 @@ export default function PartnerApiPage() {
             <p>FastLinQ is a marketplace — couriers bid for your delivery, and you choose.</p>
             <div className="dev-steps">
               <div className="dev-step"><span className="n">1</span><div><h4>Create</h4><p>Post a delivery with a recommended fee. Nearby couriers are notified instantly.</p></div></div>
-              <div className="dev-step"><span className="n">2</span><div><h4>Collect offers</h4><p>Poll the offers endpoint. Couriers submit offers — they may match your fee or raise it.</p></div></div>
+              <div className="dev-step"><span className="n">2</span><div><h4>Collect offers</h4><p>Couriers submit offers — they may match your fee, raise it, or go up to 40% below. Get them pushed via webhook, or poll.</p></div></div>
               <div className="dev-step"><span className="n">3</span><div><h4>Accept</h4><p>Assign the offer you want. The courier must be online at that moment to be assigned.</p></div></div>
               <div className="dev-step"><span className="n">4</span><div><h4>Track</h4><p>Follow the delivery’s status and the courier’s live location.</p></div></div>
               <div className="dev-step"><span className="n">5</span><div><h4>Confirm</h4><p>Your recipient’s 6-character delivery code closes the job at hand-over.</p></div></div>
@@ -145,6 +147,46 @@ export default function PartnerApiPage() {
               <span className="dev-pill completed">completed</span>
               <span className="dev-pill cancelled">cancelled</span>
             </div>
+
+            {/* Quotes */}
+            <section id="quotes">
+              <h2>Quote a delivery</h2>
+              <div className="endpoint">
+                <div className="endpoint-head">
+                  <span className="verb post">POST</span>
+                  <span className="path">/api/v1/quotes</span>
+                  <span className="scope">scope <b>deliveries:read</b></span>
+                </div>
+                <div className="endpoint-body">
+                  <p>
+                    Price a route <strong>without creating a delivery</strong> — use this to show a
+                    shipping cost at checkout. Nothing is created and no couriers are notified.
+                    Omit <code className="inline">vehicle_id</code> to get a quote for every vehicle type.
+                  </p>
+                  <Code lang="curl">{`curl -X POST https://api.fastlinq.app/api/v1/quotes \\
+  -H "x-api-key: $FLQ_KEY" -H "Content-Type: application/json" \\
+  -d '{
+    "pickup":  { "formatted_address": "12 Samora Machel Ave, Harare", "lat": -17.8292, "lng": 31.0522 },
+    "dropoff": { "formatted_address": "5 Borrowdale Rd, Harare",      "lat": -17.7600, "lng": 31.0900 }
+  }'`}</Code>
+                  <Code lang="json">{`{
+  "distance": 6100,
+  "distance_source": "road",
+  "currency": "USD",
+  "data": [
+    { "vehicle_type": "Motorbike", "recommended_fee": 5.20, "minimum_fee": 3.12 },
+    { "vehicle_type": "Van",       "recommended_fee": 8.50, "minimum_fee": 5.10 }
+  ]
+}`}</Code>
+                  <p>
+                    <code className="inline">distance_source</code> is <code className="inline">road</code> when a
+                    routed distance was available, or <code className="inline">straight_line</code> as a fallback.
+                    <code className="inline">minimum_fee</code> is the lowest a courier may be offered (40% below
+                    recommended).
+                  </p>
+                </div>
+              </div>
+            </section>
 
             {/* Create */}
             <h2 id="create">Create a delivery</h2>
