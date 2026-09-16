@@ -168,6 +168,7 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
         userName={drawerUserName}
         onClose={() => setDrawerOpen(false)}
         currentToken={currentToken}
+        onDecided={() => setRefreshKey(k => k + 1)}
       />
 
       <VehicleModal

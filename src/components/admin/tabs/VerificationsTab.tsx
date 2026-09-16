@@ -34,6 +34,7 @@ function diditBadge(status: string) {
     approved: 'badge-completed',
     declined: 'badge-cancelled',
     pending: 'badge-pending',
+    'in review': 'badge-pending',
     processing: 'badge-active',
   };
   return <span className={`badge ${map[s] || 'badge-pending'}`}>{status}</span>;
@@ -74,31 +75,51 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge, to
       setLoading(true);
 
       try {
-        const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
-        const res = await fetch(`${API}/admin/verifications?${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
+        const applyFilters = (list: Verification[]) => {
+          let out = list;
+          if (currentSearch) {
+            const q = currentSearch.toLowerCase();
+            out = out.filter(c =>
+              (c.first_name || '').toLowerCase().includes(q) ||
+              (c.last_name || '').toLowerCase().includes(q) ||
+              (c.contact_number || '').toLowerCase().includes(q)
+            );
+          }
+          if (currentFilter) {
+            out = out.filter(c =>
+              (c.didit_status || '').toLowerCase() === currentFilter.toLowerCase()
+            );
+          }
+          return out;
+        };
 
-        const body = await res.json();
-        const newRows: Verification[] = body.data ?? [];
-        const totalCount: number = body.meta?.total ?? 0;
-
-        if (currentPage === 1 && totalCount > 0) onVerifyBadge(totalCount);
-
-        let filtered = newRows;
-        if (currentSearch) {
-          const q = currentSearch.toLowerCase();
-          filtered = filtered.filter(c =>
-            (c.first_name || '').toLowerCase().includes(q) ||
-            (c.last_name || '').toLowerCase().includes(q) ||
-            (c.contact_number || '').toLowerCase().includes(q)
-          );
-        }
-        if (currentFilter) {
-          filtered = filtered.filter(c =>
-            (c.didit_status || '').toLowerCase() === currentFilter.toLowerCase()
-          );
+        // Filters run client-side on each server page. If a page has no match
+        // but more pages exist, keep scanning (bounded) — otherwise a filter like
+        // "In Review" wrongly reports nothing when no match sits on page 1.
+        const MAX_SCAN = 10;
+        const filtering = !!(currentSearch || currentFilter);
+        let pageNo = currentPage;
+        let newRows: Verification[] = [];
+        let filtered: Verification[] = [];
+        let totalCount = 0;
+        for (let scanned = 0; scanned < MAX_SCAN; scanned++) {
+          const params = new URLSearchParams({ page: String(pageNo), limit: String(LIMIT) });
+          const res = await fetch(`${API}/admin/verifications?${params}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) {
+            if (currentPage === 1) setEmpty(true);
+            hasMoreRef.current = false;
+            setHasMore(false);
+            return;
+          }
+          const body = await res.json();
+          newRows = body.data ?? [];
+          totalCount = body.meta?.total ?? 0;
+          if (pageNo === 1 && totalCount > 0) onVerifyBadge(totalCount);
+          filtered = applyFilters(newRows);
+          if (filtered.length || newRows.length < LIMIT || !filtering) break;
+          pageNo++;
         }
 
         if (!filtered.length && currentPage === 1) {
@@ -111,8 +132,8 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge, to
         setRows(prev => (currentPage === 1 ? filtered : [...prev, ...filtered]));
         setTotal(totalCount);
 
-        pageRef.current = currentPage + 1;
-        setPage(currentPage + 1);
+        pageRef.current = pageNo + 1;
+        setPage(pageNo + 1);
 
         if (newRows.length < LIMIT) { hasMoreRef.current = false; setHasMore(false); }
       } finally {
@@ -155,6 +176,7 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge, to
           <div className="panel-count">{countLabel}</div>
           <select className="filter-select" value={filter} onChange={e => setFilter(e.target.value)}>
             <option value="">All statuses</option>
+            <option value="In Review">In Review (needs decision)</option>
             <option value="Approved">Approved</option>
             <option value="Pending">Pending</option>
             <option value="Processing">Processing</option>
@@ -219,7 +241,7 @@ export default function VerificationsTab({ onOpenVerifyDrawer, onVerifyBadge, to
                     className="action-btn primary"
                     onClick={() => onOpenVerifyDrawer(c.user_id, `${c.first_name} ${c.last_name}`)}
                   >
-                    Review
+                    {c.didit_status === 'In Review' ? 'Approve / Decline' : 'Review'}
                   </button>
                 </td>
               </tr>
