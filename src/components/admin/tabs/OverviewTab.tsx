@@ -4,41 +4,29 @@ import { useEffect, useState } from 'react';
 import { Users, Bike, Package, Clock } from 'lucide-react';
 import FleetComposition from '../FleetComposition';
 import JobInsights from '../JobInsights';
+import { stageBadge, personName } from './JobsTab';
 
 const API = process.env.NEXT_PUBLIC_API_BASE;
 
 interface OverviewTabProps {
   onViewAllJobs: () => void;
+  onOpenJob: (jobId: number) => void;
   onPendingBadge: (count: number) => void;
   token: string;
 }
 
+type PersonLite = { user_id: string; first_name: string | null; last_name: string | null; contact_number: string | null };
+
 interface RecentJob {
-  id: string;
-  status: string;
+  id: number;
+  status: string | null;
+  stage?: 'open' | 'in_transit' | 'completed' | 'cancelled';
   delivery_fee: number;
   created_at: string;
   pickup_location: { formatted_address?: string } | null;
   dropoff_location: { formatted_address?: string } | null;
-  users: { first_name: string; last_name: string } | null;
-}
-
-function statusBadge(status: string | null | undefined): string {
-  const s = (status || 'pending').toLowerCase();
-  const map: Record<string, string> = {
-    pending: 'badge-pending',
-    active: 'badge-active',
-    in_progress: 'badge-active',
-    completed: 'badge-completed',
-    cancelled: 'badge-cancelled',
-    canceled: 'badge-cancelled',
-  };
-  return `<span class="badge ${map[s] || 'badge-pending'}">${s}</span>`;
-}
-
-function userName(u: { first_name?: string; last_name?: string } | null): string {
-  if (!u) return '—';
-  return `${u.first_name || ''} ${u.last_name || ''}`.trim() || '—';
+  users: PersonLite | null;
+  carrier?: PersonLite | null;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -46,7 +34,7 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function OverviewTab({ onViewAllJobs, onPendingBadge, token }: OverviewTabProps) {
+export default function OverviewTab({ onViewAllJobs, onOpenJob, onPendingBadge, token }: OverviewTabProps) {
   const [stats, setStats] = useState<any>(null);
   const [recentJobs, setRecentJobs] = useState<RecentJob[] | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -150,6 +138,7 @@ export default function OverviewTab({ onViewAllJobs, onPendingBadge, token }: Ov
             <tr>
               <th>ID</th>
               <th>Client</th>
+              <th>Carrier</th>
               <th>Route</th>
               <th>Status</th>
               <th>Fee</th>
@@ -159,22 +148,30 @@ export default function OverviewTab({ onViewAllJobs, onPendingBadge, token }: Ov
           <tbody>
             {loadingJobs && (
               <tr className="state-row">
-                <td colSpan={6}><span className="spinner"></span></td>
+                <td colSpan={7}><span className="spinner"></span></td>
               </tr>
             )}
             {!loadingJobs && recentJobs?.length === 0 && (
-              <tr className="state-row"><td colSpan={6}>No jobs yet</td></tr>
+              <tr className="state-row"><td colSpan={7}>No jobs yet</td></tr>
             )}
             {!loadingJobs && recentJobs?.map(j => (
-              <tr key={j.id}>
+              <tr
+                key={j.id}
+                className="clickable"
+                tabIndex={0}
+                onClick={() => onOpenJob(j.id)}
+                onKeyDown={e => { if (e.key === 'Enter') onOpenJob(j.id); }}
+                title="View full job details"
+              >
                 <td>
                   <code style={{ fontSize: '11px', color: 'var(--ink-mute)' }}>#{j.id}</code>
                 </td>
-                <td>{userName(j.users)}</td>
+                <td>{personName(j.users) || '—'}</td>
+                <td>{personName(j.carrier) || <span style={{ color: 'var(--ink-mute)', fontSize: 12 }}>Not taken</span>}</td>
                 <td style={{ fontSize: '12px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {j.pickup_location?.formatted_address || '—'} → {j.dropoff_location?.formatted_address || '—'}
                 </td>
-                <td dangerouslySetInnerHTML={{ __html: statusBadge(j.status) }} />
+                <td>{stageBadge(j)}</td>
                 <td style={{ fontWeight: 600 }}>${(j.delivery_fee || 0).toFixed(2)}</td>
                 <td style={{ color: 'var(--ink-mute)', fontSize: '12px' }}>{fmtDate(j.created_at)}</td>
               </tr>

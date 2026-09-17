@@ -22,6 +22,9 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 export default function TransactionsTab({ token }: TransactionsTabProps) {
+  // Read at call time so infinite scroll uses a token refreshed while the tab stayed open.
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
   const [rows, setRows] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -43,7 +46,7 @@ export default function TransactionsTab({ token }: TransactionsTabProps) {
       try {
         const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
         const res = await fetch(`${API}/admin/transactions?${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${tokenRef.current}` },
         });
         if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 

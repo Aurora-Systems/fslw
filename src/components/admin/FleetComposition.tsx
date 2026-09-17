@@ -18,6 +18,7 @@ interface Verification {
   declined: number;
   pending: number;
   not_started: number;
+  incomplete?: number; // in progress / expired / abandoned
   unknown: number;
   total: number;
 }
@@ -36,6 +37,7 @@ const VERIF_SEGMENTS = [
   { key: 'approved', label: 'Approved', color: '#22c55e' },
   { key: 'pending', label: 'In review', color: '#f59e0b' },
   { key: 'declined', label: 'Declined', color: '#ef4444' },
+  { key: 'incomplete', label: 'Incomplete', color: '#94a3b8' },
   { key: 'not_started', label: 'Not started', color: '#c4c9d4' },
   { key: 'unknown', label: 'Unknown', color: '#8a94a6' },
 ] as const;

@@ -80,6 +80,9 @@ function downloadCSV(rows: IncompleteUser[], type: 'all' | 'phone' | 'email') {
 }
 
 export default function IncompleteTab({ token, onBadge }: IncompleteTabProps) {
+  // Read at call time so infinite scroll uses a token refreshed while the tab stayed open.
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
   const [rows, setRows] = useState<IncompleteUser[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -109,7 +112,7 @@ export default function IncompleteTab({ token, onBadge }: IncompleteTabProps) {
       try {
         const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
         const res = await fetch(`${API}/admin/incomplete-signups?${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${tokenRef.current}` },
         });
         if (!res.ok) {
           const errBody = await res.text();
@@ -189,7 +192,7 @@ export default function IncompleteTab({ token, onBadge }: IncompleteTabProps) {
       const method = wasContacted ? 'DELETE' : 'POST';
       const res = await fetch(`${API}/admin/incomplete-signups/${userId}/contact`, {
         method,
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
       if (!res.ok) throw new Error('failed');
     } catch {
@@ -210,7 +213,7 @@ export default function IncompleteTab({ token, onBadge }: IncompleteTabProps) {
       // Fetch all rows (no pagination) from server
       const params = new URLSearchParams({ export: 'true', type });
       const res = await fetch(`${API}/admin/incomplete-signups?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
       if (!res.ok) { alert('Export failed — check console'); return; }
       const body = await res.json();

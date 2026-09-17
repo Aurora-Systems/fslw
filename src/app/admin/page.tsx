@@ -44,6 +44,23 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Supabase access tokens expire after about an hour. The Supabase client
+  // refreshes them in the background, but this page captured the session once —
+  // so after an hour every API call went out with the old, expired token (401)
+  // and the portal "stopped loading". Keep our session in step with the client.
+  useEffect(() => {
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event, s) => {
+      if ((event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && s) {
+        setSession((prev) => (prev && prev.user.id === s.user.id ? s : prev));
+      } else if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setAdminData(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleLogin = (s: Session, ad: AdminData) => {
     setSession(s);
     setAdminData(ad);

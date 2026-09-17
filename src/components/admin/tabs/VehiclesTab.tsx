@@ -33,6 +33,9 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 export default function VehiclesTab({ onOpenVehicleImages, token }: VehiclesTabProps) {
+  // Read at call time so infinite scroll uses a token refreshed while the tab stayed open.
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -68,7 +71,7 @@ export default function VehiclesTab({ onOpenVehicleImages, token }: VehiclesTabP
       try {
         const params = new URLSearchParams({ page: String(currentPage), limit: String(LIMIT) });
         const res = await fetch(`${API}/admin/fleet?${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${tokenRef.current}` },
         });
         if (!res.ok) { setEmpty(true); hasMoreRef.current = false; setHasMore(false); return; }
 

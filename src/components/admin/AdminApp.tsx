@@ -14,6 +14,7 @@ import VehiclesTab from './tabs/VehiclesTab';
 import TransactionsTab from './tabs/TransactionsTab';
 import ApiKeysTab from './tabs/ApiKeysTab';
 import VerificationDrawer from './VerificationDrawer';
+import JobDrawer from './JobDrawer';
 import VehicleModal from './VehicleModal';
 
 interface AdminData {
@@ -54,6 +55,13 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
   const [drawerUserName, setDrawerUserName] = useState('');
+  // A person can have several Didit attempts; the Verifications tab opens one
+  // specific session, the Couriers tab opens the courier's latest.
+  const [drawerSessionId, setDrawerSessionId] = useState<string | null>(null);
+
+  // Job details drawer
+  const [jobDrawerOpen, setJobDrawerOpen] = useState(false);
+  const [jobDrawerId, setJobDrawerId] = useState<number | null>(null);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -78,11 +86,20 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
     setLastUpdated(`Updated ${new Date().toLocaleTimeString()}`);
   };
 
-  const openVerifyDrawer = useCallback((userId: string, name: string) => {
+  const openVerifyDrawer = useCallback((userId: string, name: string, sessionId?: string) => {
     setDrawerUserId(userId);
     setDrawerUserName(name);
+    setDrawerSessionId(sessionId ?? null);
     setDrawerOpen(true);
   }, []);
+
+  const openJob = useCallback((jobId: number) => {
+    setJobDrawerId(jobId);
+    setJobDrawerOpen(true);
+  }, []);
+
+  const closeJob = useCallback(() => setJobDrawerOpen(false), []);
+  const closeVerifyDrawer = useCallback(() => setDrawerOpen(false), []);
 
   const openVehicleImages = useCallback((vehicleId: string, title: string) => {
     setModalVehicleId(vehicleId);
@@ -114,12 +131,13 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
             <OverviewTab
               key={`overview-${refreshKey}`}
               onViewAllJobs={() => handleTabChange('jobs')}
+              onOpenJob={openJob}
               onPendingBadge={setPendingBadge}
               token={currentToken}
             />
           )}
           {activeTab === 'jobs' && initialisedTabs.has('jobs') && (
-            <JobsTab key={`jobs-${refreshKey}`} token={currentToken} />
+            <JobsTab key={`jobs-${refreshKey}`} token={currentToken} onOpenJob={openJob} />
           )}
           {activeTab === 'users' && initialisedTabs.has('users') && (
             <UsersTab key={`users-${refreshKey}`} token={currentToken} />
@@ -162,11 +180,23 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
         </div>
       </div>
 
+      {/* Rendered before the verification drawer so a courier's verification,
+          opened from a job, stacks on top of the job. */}
+      <JobDrawer
+        open={jobDrawerOpen}
+        jobId={jobDrawerId}
+        token={currentToken}
+        onClose={closeJob}
+        onOpenVerification={openVerifyDrawer}
+        suspended={drawerOpen}
+      />
+
       <VerificationDrawer
         open={drawerOpen}
         userId={drawerUserId}
         userName={drawerUserName}
-        onClose={() => setDrawerOpen(false)}
+        sessionId={drawerSessionId}
+        onClose={closeVerifyDrawer}
         currentToken={currentToken}
         onDecided={() => setRefreshKey(k => k + 1)}
       />
