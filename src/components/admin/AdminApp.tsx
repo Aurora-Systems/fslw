@@ -6,6 +6,7 @@ import AdminSidebar from './AdminSidebar';
 import AdminTopbar from './AdminTopbar';
 import OverviewTab from './tabs/OverviewTab';
 import JobsTab from './tabs/JobsTab';
+import SharedTripsTab from './tabs/SharedTripsTab';
 import UsersTab from './tabs/UsersTab';
 import IncompleteTab from './tabs/IncompleteTab';
 import CouriersTab from './tabs/CouriersTab';
@@ -32,6 +33,7 @@ interface AdminAppProps {
 const TAB_TITLES: Record<string, string> = {
   overview:    'Dashboard',
   jobs:        'Jobs',
+  'shared-trips': 'Shared Trips',
   users:       'Users',
   incomplete:  'Incomplete Signups',
   couriers:    'Couriers',
@@ -41,7 +43,7 @@ const TAB_TITLES: Record<string, string> = {
   'api-keys':  'API Keys',
 };
 
-type TabKey = 'overview' | 'jobs' | 'users' | 'incomplete' | 'couriers' | 'verifications' | 'vehicles' | 'transactions' | 'api-keys';
+type TabKey = 'overview' | 'jobs' | 'shared-trips' | 'users' | 'incomplete' | 'couriers' | 'verifications' | 'vehicles' | 'transactions' | 'api-keys';
 
 export default function AdminApp({ session, adminData, onLogout }: AdminAppProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
@@ -138,6 +140,9 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
           )}
           {activeTab === 'jobs' && initialisedTabs.has('jobs') && (
             <JobsTab key={`jobs-${refreshKey}`} token={currentToken} onOpenJob={openJob} />
+          )}
+          {activeTab === 'shared-trips' && initialisedTabs.has('shared-trips') && (
+            <SharedTripsTab key={`shared-trips-${refreshKey}`} token={currentToken} onOpenJob={openJob} />
           )}
           {activeTab === 'users' && initialisedTabs.has('users') && (
             <UsersTab key={`users-${refreshKey}`} token={currentToken} />

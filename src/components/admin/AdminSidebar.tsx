@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { BarChart2, Package, Users, UserX, Bike, ShieldCheck, Car, CreditCard, KeyRound, LogOut } from 'lucide-react';
+import { BarChart2, Package, Route, Users, UserX, Bike, ShieldCheck, Car, CreditCard, KeyRound, LogOut } from 'lucide-react';
 
 interface AdminSidebarProps {
   activeTab: string;
@@ -63,6 +63,15 @@ export default function AdminSidebar({
           {pendingBadge > 0 && (
             <span className="nav-badge blue">{pendingBadge}</span>
           )}
+        </button>
+        <button
+          className={`nav-item${activeTab === 'shared-trips' ? ' active' : ''}`}
+          onClick={() => onTabChange('shared-trips')}
+        >
+          <span className="icon">
+            <Route />
+          </span>
+          Shared Trips
         </button>
         <button
           className={`nav-item${activeTab === 'users' ? ' active' : ''}`}
