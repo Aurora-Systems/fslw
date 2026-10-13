@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import AdminSidebar from './AdminSidebar';
 import AdminTopbar from './AdminTopbar';
@@ -76,13 +76,26 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
   const adminRole = adminData?.role || 'staff';
   const currentToken = session.access_token;
 
+  // Set only by the API Keys tab while it is mounted: it asks before a one-time key that is
+  // being created, or not copied yet, is lost by unmounting the tab.
+  const apiKeysLeaveGuardRef = useRef<(() => boolean) | null>(null);
+  const registerApiKeysLeaveGuard = useCallback((guard: () => boolean) => {
+    apiKeysLeaveGuardRef.current = guard;
+    return () => {
+      if (apiKeysLeaveGuardRef.current === guard) apiKeysLeaveGuardRef.current = null;
+    };
+  }, []);
+  const canLeaveTab = () => !apiKeysLeaveGuardRef.current || apiKeysLeaveGuardRef.current();
+
   const handleTabChange = (tab: string) => {
     const t = tab as TabKey;
+    if (t !== activeTab && !canLeaveTab()) return;
     setActiveTab(t);
     setInitialisedTabs(prev => new Set<TabKey>([...Array.from(prev), t]));
   };
 
   const handleRefresh = () => {
+    if (!canLeaveTab()) return;
     setRefreshKey(k => k + 1);
     setInitialisedTabs(new Set<TabKey>([activeTab]));
     setLastUpdated(`Updated ${new Date().toLocaleTimeString()}`);
@@ -114,7 +127,7 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
       <AdminSidebar
         activeTab={activeTab}
         onTabChange={handleTabChange}
-        onLogout={onLogout}
+        onLogout={() => { if (canLeaveTab()) onLogout(); }}
         adminName={adminName}
         adminRole={adminRole}
         pendingBadge={pendingBadge}
@@ -180,7 +193,7 @@ export default function AdminApp({ session, adminData, onLogout }: AdminAppProps
             <TransactionsTab key={`transactions-${refreshKey}`} token={currentToken} />
           )}
           {activeTab === 'api-keys' && initialisedTabs.has('api-keys') && adminRole === 'super_admin' && (
-            <ApiKeysTab key={`api-keys-${refreshKey}`} token={currentToken} />
+            <ApiKeysTab key={`api-keys-${refreshKey}`} token={currentToken} registerLeaveGuard={registerApiKeysLeaveGuard} />
           )}
         </div>
       </div>
